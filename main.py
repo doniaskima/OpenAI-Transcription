@@ -393,10 +393,10 @@ def main():
     st.write(css, unsafe_allow_html=True)
     
     # Initialize Pinecone
-    pinecone.api_key = os.getenv('PINECONE_API_KEY')
-    pinecone.environment = os.getenv('PINECONE_ENVIORNMENT')
+    pinecone.api_key = "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"
+    pinecone.environment = "us-west1-gcp-free"
 
-    index_name = 'index1'
+    index_name = 'tool'
     create_db()
     init_session_states()
     st.title("OpenAI Transcription Tool")
