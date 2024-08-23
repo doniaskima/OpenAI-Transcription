@@ -8,6 +8,7 @@ import os
 import re
 import pinecone
 import openai
+import time
 import pandas as pd
 from collections import Counter
 from pydub import AudioSegment
@@ -36,7 +37,7 @@ from prompts import chat_template, fact_check_prompt, sentiment_prompt
 from htmlTemplates import css, user_template, bot_template
 
 
-# TODO: Segment Audion: Insert time stamps into transcription
+# TODO: Segment Audio: Insert time stamps into transcription
 
 # TODO: Improve Pinecone MetaData and Organization
 
@@ -55,7 +56,7 @@ def approve_email(email):
 
 def user_authentication_tab():
     if st.session_state.user_authenticated:
-        st.success("User Succesfully Authenticated")
+        st.success("User Successfully Authenticated")
         return
 
     with st.expander("User Authentication", expanded=True):
@@ -180,7 +181,6 @@ def define_tools():
     ]
     return tools
 
-    
 
 # Upload audio files for file or voice
 def upload_audio_tab():
@@ -244,10 +244,16 @@ def generate_corrected_transcript(transcript):
 
 def transcribe_audio():
     with st.spinner('Transcribing Audio...'): 
-        with open(st.session_state.audio_file_path, 'rb') as audio_file:
-            transcript = openai.Audio.transcribe("whisper-1", audio_file)['text']
-            st.session_state.transcript = generate_corrected_transcript(transcript)
-
+        try:
+            with open(st.session_state.audio_file_path, 'rb') as audio_file:
+                transcript = openai.Audio.transcribe("whisper-1", audio_file)['text']
+                st.session_state.transcript = generate_corrected_transcript(transcript)
+        except openai.error.RateLimitError as e:
+            st.error(f"RateLimitError: {e}. Retrying in 60 seconds...")
+            time.sleep(60)  # Wait for 60 seconds before retrying
+            transcribe_audio()
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
 
 def display_transcript():
     with st.expander("Transcription", expanded=True):
@@ -268,7 +274,7 @@ def map_reduce_summarize_text(input):
         return(f"An error occured: {e}")
 
 def summarize_transcript():
-    with st.spinner("Generting Summary..."):
+    with st.spinner("Generating Summary..."):
         st.session_state.transcript_summary = map_reduce_summarize_text(st.session_state.transcript)
 
 
@@ -284,7 +290,7 @@ def fact_check_transcript():
     zsrd_agent = create_zrsd_agent()
     with st.spinner("Fact Checking..."):
         st.session_state.fact_check = zsrd_agent.run(fact_check_prompt.format(st.session_state.transcript, st.session_state.transcript_summary))
-    
+
 
 def display_fact_check():
     with st.expander("Fact Check", expanded=True):
@@ -315,7 +321,7 @@ def display_sentiment():
 # Vector DB QA Search
 
 def qa_search():
-    with st.spinner("Refering to Previous Transcripts..."):
+    with st.spinner("Referring to Previous Transcripts..."):
         st.session_state.current_ai_research = qa.run(f'''
             \nReferring to previous results and information, 
             write relating to this summary: <summary>{st.session_state.transcript_summary}</summary>
@@ -416,9 +422,15 @@ def main():
                 if st.button("Generate Transcript and Summary"):
                     st.session_state.chat_history = []
                     process_file()
-                    st.subheader(st.session_state.audio_file_path.split("\\")[1])
+                    
+                    # Updated code to handle the split
+                    if "\\" in st.session_state.audio_file_path:
+                        st.subheader(st.session_state.audio_file_path.split("\\")[-1])
+                    else:
+                        st.subheader(st.session_state.audio_file_path.split("/")[-1])
+                    
                     generate_and_display_results()
-                    insert_into_transcripts(file_name=(st.session_state.audio_file_path.split("\\")[1]),
+                    insert_into_transcripts(file_name=(st.session_state.audio_file_path.split("\\")[-1]),
                                             transcription=st.session_state.transcript,
                                             transcription_summary=st.session_state.transcript_summary,
                                             sentiment_label=st.session_state.sentiment_label,
@@ -428,7 +440,7 @@ def main():
                                             fact_check=st.session_state.fact_check
                     )
                     insert_audio(file_path=st.session_state.audio_file_path, 
-                                transcript_id=get_transcript_id(file_name=(st.session_state.audio_file_path.split("\\")[1]))
+                                transcript_id=get_transcript_id(file_name=(st.session_state.audio_file_path.split("\\")[-1]))
                     )
                     
                     # Create Pinecone index if it doesn't exist
@@ -452,7 +464,7 @@ def main():
                     st.experimental_rerun()
 
                 if st.session_state.audio_file_path and st.session_state.transcript:
-                    st.subheader(st.session_state.audio_file_path.split("\\")[1])
+                    st.subheader(st.session_state.audio_file_path.split("\\")[-1])
                     display_results()     
                     st.subheader("Chat with Transcription")
                     user_message = st.text_input("User Message", key='unique_key1')
