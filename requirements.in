@@ -1,0 +1,6 @@
+numpy
+altair
+chroma-hnswlib
+chromadb
+langchain
+tokenizers==0.15.2
